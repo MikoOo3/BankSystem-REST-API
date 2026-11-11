@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="BankSystem.API/BankSystem.API.csproj" Id="3eaddfae-c61e-494e-bb7b-85aabec583fb" />
+  <Project Path="BankSystem.Business/BankSystem.Business.csproj" Id="264e9442-5878-41b9-b373-5fe8fd9ad937" />
+  <Project Path="BankSystem.DataAccess/BankSystem.DataAccess.csproj" />
+  <Project Path="ConsoleAppTesting/ConsoleAppTesting.csproj" />
+</Solution>
