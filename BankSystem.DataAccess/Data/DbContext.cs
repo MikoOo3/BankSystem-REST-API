@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using BankDataAccessLayer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Identity.Client.NativeInterop;
 using System;
 
@@ -13,6 +14,8 @@ public class BankSystemDbContext : DbContext
     public DbSet<Account> Accounts { get; set; } = null!;
     public DbSet<Transaction> Transactions { get; set; } = null!;
     public DbSet<AuditLog> AuditLogs { get; set; } = null!;
+    public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
+
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {

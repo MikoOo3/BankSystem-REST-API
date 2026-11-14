@@ -1,6 +1,7 @@
 ﻿using BankDataAccessLayer;
 using BankSystem.Business.BusinessObjects;
 using BankSystem.DataAccess.DTOs;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -8,6 +9,7 @@ namespace BankSystem.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [Authorize]
     public class UsersController : ControllerBase
     {
         private readonly BankSystemDbContext _context;
@@ -43,12 +45,15 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpPost("register")]
+        [AllowAnonymous]
         public async Task<ActionResult<UserDTO>> RegisterUser([FromBody] UserDTO userDto)
         {
             if (userDto == null) return BadRequest("Invalid user data.");
 
             bool isExist = await UserBusiness.IsUserExist(_context, userDto.Email);
             if (isExist) return Conflict("Email is already registered.");
+
+            userDto.Role = "Customer";
 
             var userBusiness = new UserBusiness(_context, userDto, UserBusiness.enMode.AddNew);
             bool isSaved = await userBusiness.SaveAsync();

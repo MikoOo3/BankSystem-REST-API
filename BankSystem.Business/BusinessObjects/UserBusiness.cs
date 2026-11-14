@@ -1,6 +1,7 @@
 ﻿using BankAPIBusinessLayer.Security;
 using BankDataAccessLayer;
 using BankSystem.DataAccess.DTOs;
+using BankSystem.DataAccess.DTOs.Auth;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -249,5 +250,50 @@ namespace BankSystem.Business.BusinessObjects
         {
             return await context.Users.AsNoTracking().AnyAsync(u => u.Email == email);
         }
+
+        public static async Task<(UserBusiness? User, string ErrorMessage)> AuthenticateAsync(BankSystemDbContext context, LoginDTO loginDto)
+        {
+            var entity = await context.Users.FirstOrDefaultAsync(u => u.Email == loginDto.Email);
+
+            if (entity == null)
+                return (null, "Invalid email or password.");
+
+            if (!entity.IsActive)
+                return (null, "This account is deactivated. Please contact bank administration.");
+
+            if (entity.LockoutEnd.HasValue && entity.LockoutEnd.Value > DateTimeOffset.UtcNow)
+            {
+                var remainingMinutes = Math.Ceiling((entity.LockoutEnd.Value - DateTimeOffset.UtcNow).TotalMinutes);
+                return (null, $"Account is temporarily locked due to multiple failed attempts. Try again in {remainingMinutes} minutes.");
+            }
+
+            bool isPasswordValid = PasswordHasher.VerifyPassword(loginDto.Password, entity.PasswordHash);
+
+            if (!isPasswordValid)
+            {
+                entity.FailedLoginAttempts++;
+
+                if (entity.FailedLoginAttempts >= 5)
+                {
+                    entity.LockoutEnd = DateTimeOffset.UtcNow.AddMinutes(15);
+                }
+
+                await context.SaveChangesAsync();
+                return (null, "Invalid email or password.");
+            }
+
+            if (entity.FailedLoginAttempts > 0 || entity.LockoutEnd != null)
+            {
+                entity.FailedLoginAttempts = 0;
+                entity.LockoutEnd = null;
+                await context.SaveChangesAsync();
+            }
+
+            var dto = new UserDTO(entity.Id, entity.FullName, entity.Email, entity.PasswordHash, entity.Role, 
+                entity.FailedLoginAttempts, entity.LockoutEnd, entity.IsActive, entity.CreatedAt);
+
+            return (new UserBusiness(context, dto, enMode.Update), string.Empty);
+        }
+
     }
 }
