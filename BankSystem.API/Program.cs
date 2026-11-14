@@ -8,6 +8,17 @@ builder.Services.AddDbContext<BankSystemDbContext>(options =>
     options.UseSqlServer(connectionString)
            .LogTo(Console.WriteLine, LogLevel.Information));
 
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("BankApiCorsPolicy", policy =>
+    {
+        policy
+            .AllowAnyOrigin()
+            .AllowAnyHeader()
+            .AllowAnyMethod();
+    });
+});
+
 
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -22,6 +33,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseCors("BankApiCorsPolicy");
 app.UseAuthorization();
 app.MapControllers();
 
