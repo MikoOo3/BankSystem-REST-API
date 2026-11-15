@@ -22,6 +22,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpGet("All")]
+        [Authorize(Roles = "Manager,Employee")]
         public async Task<ActionResult<IEnumerable<TransactionDTO>>> GetAllTransactions()
         {
             var transactions = await TransactionBusiness.GetAllTransactionsAsync(_context);
@@ -65,6 +66,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpPost("deposit")]
+        [Authorize(Roles = "Manager,Employee")]
         public async Task<ActionResult<TransactionDTO>> Deposit([FromBody] TransactionDTO transactionDto)
         {
             if (transactionDto == null) return BadRequest("Invalid transaction data.");
@@ -94,6 +96,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpPost("withdraw")]
+        [Authorize(Roles = "Manager,Employee")]
         public async Task<ActionResult<TransactionDTO>> Withdraw([FromBody] TransactionDTO transactionDto)
         {
             if (transactionDto == null) return BadRequest("Invalid transaction data.");

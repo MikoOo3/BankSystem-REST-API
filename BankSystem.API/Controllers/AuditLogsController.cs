@@ -11,7 +11,7 @@ namespace BankSystem.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize]
+    [Authorize(Roles = "Manager")]
     public class AuditLogsController : ControllerBase
     {
         private readonly BankSystemDbContext _context;
@@ -22,6 +22,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpGet("All")]
+
         public async Task<ActionResult<IEnumerable<AuditLogDTO>>> GetAllLogs()
         {
             var logs = await AuditLogBusiness.GetAllLogsAsync(_context);
