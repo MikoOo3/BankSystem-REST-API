@@ -65,43 +65,23 @@ namespace BankSystem.Business.BusinessObjects
                 CreatedAt = DateTime.UtcNow
             };
 
-            using var dbTransaction = await _context.Database.BeginTransactionAsync();
+            await _context.Users.AddAsync(entity);
+            int rows = await _context.SaveChangesAsync();
 
-            try
+            if (rows > 0)
             {
-                await _context.Users.AddAsync(entity);
-                int rows = await _context.SaveChangesAsync();
-                if (rows <= 0) throw new Exception("Insertion failed.");
-
                 this.Id = entity.Id;
                 this.CreatedAt = entity.CreatedAt;
-
-                string newUserJson = System.Text.Json.JsonSerializer.Serialize(this.ToDTO);
-
-                var auditLog = new AuditLogBusiness(_context, new AuditLogDTO(0, this.Id, "User Registration", null,
-                    newUserJson, DateTime.UtcNow));
-
-                await auditLog.SaveAsync();
-
-                await dbTransaction.CommitAsync();
                 return true;
             }
-            catch (Exception)
-            {
-                await dbTransaction.RollbackAsync();
-                return false;
-            }
+
+            return false;
         }
 
         private async Task<bool> _UpdateUserAsync()
         {
             var entity = await _context.Users.FindAsync(this.Id);
             if (entity == null) return false;
-
-            var oldDto = new UserDTO(entity.Id, entity.FullName, entity.Email, entity.PasswordHash, entity.Role,
-                entity.FailedLoginAttempts, entity.LockoutEnd, entity.IsActive, entity.CreatedAt);
-
-            string oldUserJson = System.Text.Json.JsonSerializer.Serialize(oldDto);
 
             if (this.PasswordHash != entity.PasswordHash && !string.IsNullOrWhiteSpace(this.PasswordHash))
             {
@@ -120,29 +100,10 @@ namespace BankSystem.Business.BusinessObjects
             entity.LockoutEnd = this.LockoutEnd;
             entity.IsActive = this.IsActive;
 
-            using var dbTransaction = await _context.Database.BeginTransactionAsync();
+            _context.Users.Update(entity);
+            int rows = await _context.SaveChangesAsync();
 
-            try
-            {
-                _context.Users.Update(entity);
-                int rows = await _context.SaveChangesAsync();
-                if (rows <= 0) throw new Exception("Update failed.");
-
-                string newUserJson = System.Text.Json.JsonSerializer.Serialize(this.ToDTO);
-
-                var auditLog = new AuditLogBusiness(_context, new AuditLogDTO(0, this.Id,
-                    "User Profile Updated", oldUserJson, newUserJson, DateTime.UtcNow));
-
-                await auditLog.SaveAsync();
-
-                await dbTransaction.CommitAsync();
-                return true;
-            }
-            catch (Exception)
-            {
-                await dbTransaction.RollbackAsync();
-                return false;
-            }
+            return rows > 0;
         }
 
         public async Task<bool> SaveAsync()
@@ -208,42 +169,13 @@ namespace BankSystem.Business.BusinessObjects
             var entity = await _context.Users.FindAsync(this.Id);
             if (entity == null) return false;
 
-            var oldDto = new UserDTO(entity.Id, entity.FullName, entity.Email, entity.PasswordHash,
-                entity.Role, entity.FailedLoginAttempts, entity.LockoutEnd, entity.IsActive, entity.CreatedAt);
-
-            string oldUserJson = System.Text.Json.JsonSerializer.Serialize(oldDto);
-
             entity.IsActive = false;
             this.IsActive = false;
 
-            using var dbTransaction = await _context.Database.BeginTransactionAsync();
+            _context.Users.Update(entity);
+            int rows = await _context.SaveChangesAsync();
 
-            try
-            {
-                _context.Users.Update(entity);
-                int rows = await _context.SaveChangesAsync();
-                if (rows <= 0) throw new Exception("Deactivation failed.");
-
-                string newUserJson = System.Text.Json.JsonSerializer.Serialize(this.ToDTO);
-
-                var auditLog = new AuditLogBusiness(_context, new AuditLogDTO(
-                    0,
-                    this.Id,
-                    "User Deactivated (Soft Delete)",
-                    oldUserJson,
-                    newUserJson,
-                    DateTime.UtcNow
-                ));
-                await auditLog.SaveAsync();
-
-                await dbTransaction.CommitAsync();
-                return true;
-            }
-            catch (Exception)
-            {
-                await dbTransaction.RollbackAsync();
-                return false;
-            }
+            return rows > 0;
         }
 
         public static async Task<bool> IsUserExist(BankSystemDbContext context, string email)
@@ -289,7 +221,7 @@ namespace BankSystem.Business.BusinessObjects
                 await context.SaveChangesAsync();
             }
 
-            var dto = new UserDTO(entity.Id, entity.FullName, entity.Email, entity.PasswordHash, entity.Role, 
+            var dto = new UserDTO(entity.Id, entity.FullName, entity.Email, entity.PasswordHash, entity.Role,
                 entity.FailedLoginAttempts, entity.LockoutEnd, entity.IsActive, entity.CreatedAt);
 
             return (new UserBusiness(context, dto, enMode.Update), string.Empty);

@@ -48,7 +48,7 @@ namespace BankSystem.API.Controllers
 
             if (!User.IsBankStaff() && accountBusiness.CustomerId != User.GetUserId())
                 return Forbid();
-            
+
 
             return Ok(accountBusiness.ToDTO);
         }
@@ -70,7 +70,7 @@ namespace BankSystem.API.Controllers
 
             if (!User.IsBankStaff() && accountBusiness.CustomerId != User.GetUserId())
                 return Forbid();
-            
+
             return Ok(accountBusiness.ToDTO);
         }
 
@@ -84,7 +84,7 @@ namespace BankSystem.API.Controllers
 
             if (!User.IsBankStaff() && User.GetUserId() != customerId)
                 return Forbid();
-            
+
 
             var accounts = await AccountBusiness.GetCustomerAccountsAsync(_context, customerId);
             return Ok(accounts);
@@ -110,6 +110,14 @@ namespace BankSystem.API.Controllers
                 return StatusCode(500, "A problem occurred while creating the account.");
             }
 
+            await AuditLogBusiness.LogAsync(
+                _context,
+                User.GetUserId(),
+                "Account Created",
+                null,
+                $"AccountId: {accountBusiness.Id}, AccountNumber: {accountBusiness.AccountNumber}, CustomerId: {accountBusiness.CustomerId}, Type: {accountBusiness.AccountType}"
+            );
+
             return CreatedAtAction(nameof(GetAccountById), new { id = accountBusiness.Id }, accountBusiness.ToDTO);
         }
 
@@ -123,12 +131,17 @@ namespace BankSystem.API.Controllers
             var accountBusiness = await AccountBusiness.FindAsync(_context, id);
             if (accountBusiness == null) return NotFound($"Account with ID {id} not found.");
 
+            string oldValues = $"AccountId: {id}, Type: {accountBusiness.AccountType}, DailyLimit: {accountBusiness.DailyWithdrawalLimit}";
+
             accountBusiness.AccountType = accountUpdateDto.AccountType;
             accountBusiness.DailyWithdrawalLimit = accountUpdateDto.DailyWithdrawalLimit;
             accountBusiness.Mode = AccountBusiness.enMode.Update;
 
             if (!await accountBusiness.SaveAsync())
                 return StatusCode(500, "A problem occurred while updating the account.");
+
+            string newValues = $"AccountId: {id}, Type: {accountBusiness.AccountType}, DailyLimit: {accountBusiness.DailyWithdrawalLimit}";
+            await AuditLogBusiness.LogAsync(_context, User.GetUserId(), "Account Updated", oldValues, newValues);
 
             return NoContent();
         }
@@ -147,6 +160,8 @@ namespace BankSystem.API.Controllers
 
             if (!await accountBusiness.SaveAsync())
                 return StatusCode(500, "Failed to activate account.");
+
+            await AuditLogBusiness.LogAsync(_context, User.GetUserId(), "Account Activated", $"AccountId: {id}, IsActive: False", $"AccountId: {id}, IsActive: True");
 
             return Ok(new { message = "Account activated successfully." });
         }
@@ -172,6 +187,8 @@ namespace BankSystem.API.Controllers
             {
                 return StatusCode(500, "A problem occurred while closing the account.");
             }
+
+            await AuditLogBusiness.LogAsync(_context, User.GetUserId(), "Account Closed", $"AccountId: {id}, IsActive: True", $"AccountId: {id}, IsActive: False");
 
             return Ok($"Account with ID {id} has been successfully closed.");
         }

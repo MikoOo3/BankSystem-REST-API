@@ -26,7 +26,10 @@ namespace BankSystem.API.Controllers
             var (user, errorMessage) = await UserBusiness.AuthenticateAsync(_context, loginDto);
 
             if (user == null)
+            {
+                await AuditLogBusiness.LogAsync(_context, null, "Failed Login Attempt", null, $"Email: {loginDto.Email}, Reason: {errorMessage}");
                 return Unauthorized(new { message = errorMessage });
+            }
 
             var accessToken = _jwtService.GenerateAccessToken(user);
             var refreshToken = _jwtService.GenerateRefreshToken();
@@ -35,6 +38,8 @@ namespace BankSystem.API.Controllers
 
             if (!isSaved)
                 return StatusCode(500, "Failed to generate session token.");
+
+            await AuditLogBusiness.LogAsync(_context, user.Id, "User Login", null, $"Email: {user.Email}, Role: {user.Role}");
 
             return Ok(new TokenResponseDTO
             {
@@ -59,6 +64,8 @@ namespace BankSystem.API.Controllers
             if (!isSaved)
                 return StatusCode(500, "Failed to rotate session token.");
 
+            await AuditLogBusiness.LogAsync(_context, user.Id, "Token Refreshed", null, $"Email: {user.Email}");
+
             return Ok(new TokenResponseDTO
             {
                 AccessToken = newAccessToken,
@@ -73,6 +80,8 @@ namespace BankSystem.API.Controllers
 
             if (!isRevoked)
                 return BadRequest(new { message = "Invalid or already revoked token." });
+
+            await AuditLogBusiness.LogAsync(_context, User.GetUserId() == Guid.Empty ? null : User.GetUserId(), "User Logout", null, "Refresh token revoked");
 
             return Ok(new { message = "Logged out successfully." });
         }
