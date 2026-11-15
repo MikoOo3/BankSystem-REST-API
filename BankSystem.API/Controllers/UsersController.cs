@@ -1,5 +1,6 @@
 ﻿using BankDataAccessLayer;
 using BankDataAccessLayer.DTOs;
+using BankSystem.API.Services;
 using BankSystem.Business.BusinessObjects;
 using BankSystem.DataAccess.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -10,7 +11,7 @@ namespace BankSystem.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize]
+    [Authorize(Policy = "ActiveUser")]
     public class UsersController : ControllerBase
     {
         private readonly BankSystemDbContext _context;
@@ -21,7 +22,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpGet("All")]
-        [Authorize(Roles = "Manager,Employee")]
+        [Authorize(Policy = "BankStaff")]
         public async Task<ActionResult<IEnumerable<UserDTO>>> GetAllUsers()
         {
             var users = await UserBusiness.GetAllUsersAsync(_context);
@@ -29,13 +30,15 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpGet("{id:guid}")]
-        [Authorize(Roles = "Manager,Employee")]
         public async Task<ActionResult<UserDTO>> GetUserById(Guid id)
         {
             if (id == Guid.Empty)
             {
                 return BadRequest("Invalid User ID format.");
             }
+
+            if (!User.IsBankStaff() && User.GetUserId() != id)
+                return Forbid();
 
             var userBusiness = await UserBusiness.FindAsync(_context, id);
 
@@ -67,7 +70,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpPut("deactivate/{id:guid}")]
-        [Authorize(Roles = "Manager")]
+        [Authorize(Policy = "BankManager")]
         public async Task<IActionResult> DeactivateUser(Guid id)
         {
             if (id == Guid.Empty)
@@ -91,9 +94,8 @@ namespace BankSystem.API.Controllers
             return Ok($"User with ID {id} has been successfully deactivated.");
         }
 
-
         [HttpGet("{email}")]
-        [Authorize(Roles = "Manager,Employee")]
+        [Authorize(Policy = "BankStaff")]
         public async Task<ActionResult<UserDTO>> GetUserByEmail(string email)
         {
             if (string.IsNullOrWhiteSpace(email))
@@ -119,11 +121,14 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpPut("profile/{id:guid}")]
-        [Authorize]
         public async Task<IActionResult> UpdateProfile(Guid id, [FromBody] UserProfileUpdateDTO profileDto)
         {
             if (profileDto == null) return BadRequest("Invalid data.");
             if (id != profileDto.Id) return BadRequest("User ID mismatch.");
+
+            if (User.GetUserId() != id)
+                return Forbid();
+            
 
             var userBusiness = await UserBusiness.FindAsync(_context, id);
             if (userBusiness == null) return NotFound($"User with ID {id} not found.");
@@ -160,7 +165,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpPut("{id}/role")]
-        [Authorize(Roles = "Manager")]
+        [Authorize(Policy = "BankManager")]
         public async Task<IActionResult> UpdateUserRole(Guid id, [FromBody] string newRole)
         {
             if (newRole != "Manager" && newRole != "Employee" && newRole != "Customer")
@@ -185,7 +190,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpPut("{id:guid}/unlock")]
-        [Authorize(Roles = "Manager")]
+        [Authorize(Policy = "BankManager")]
         public async Task<IActionResult> UnlockUser(Guid id)
         {
             var userBusiness = await UserBusiness.FindAsync(_context, id);
@@ -202,7 +207,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpPut("{id:guid}/activate")]
-        [Authorize(Roles = "Manager")]
+        [Authorize(Policy = "BankManager")]
         public async Task<IActionResult> ActivateUser(Guid id)
         {
             var userBusiness = await UserBusiness.FindAsync(_context, id);
@@ -219,6 +224,5 @@ namespace BankSystem.API.Controllers
 
             return Ok(new { message = "User account activated successfully." });
         }
-
     }
 }
