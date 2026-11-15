@@ -66,6 +66,8 @@ namespace BankSystem.API.Controllers
 
             if (!isSaved) return StatusCode(500, "A problem occurred while handling your request.");
 
+            await AuditLogBusiness.LogAsync(_context, userBusiness.Id, "User Registered", null, $"Email: {userBusiness.Email}, Role: Customer");
+
             return CreatedAtAction(nameof(GetUserById), new { id = userBusiness.Id }, userBusiness.ToDTO);
         }
 
@@ -90,6 +92,8 @@ namespace BankSystem.API.Controllers
             {
                 return StatusCode(500, "A problem occurred while deactivating the user.");
             }
+
+            await AuditLogBusiness.LogAsync(_context, User.GetUserId(), "User Deactivated", $"TargetUserId: {id}, IsActive: True", $"TargetUserId: {id}, IsActive: False");
 
             return Ok($"User with ID {id} has been successfully deactivated.");
         }
@@ -128,10 +132,12 @@ namespace BankSystem.API.Controllers
 
             if (User.GetUserId() != id)
                 return Forbid();
-            
+
 
             var userBusiness = await UserBusiness.FindAsync(_context, id);
             if (userBusiness == null) return NotFound($"User with ID {id} not found.");
+
+            string oldProfile = $"FullName: {userBusiness.FullName}, Email: {userBusiness.Email}";
 
             if (!string.IsNullOrWhiteSpace(profileDto.FullName))
                 userBusiness.FullName = profileDto.FullName;
@@ -148,6 +154,8 @@ namespace BankSystem.API.Controllers
                 userBusiness.Email = profileDto.Email;
             }
 
+            bool passwordChanged = false;
+
             if (!string.IsNullOrWhiteSpace(profileDto.Password))
             {
                 string passwordPattern = @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{8,}$";
@@ -155,11 +163,17 @@ namespace BankSystem.API.Controllers
                     return BadRequest("Password is too weak.");
 
                 userBusiness.PasswordHash = profileDto.Password;
+                passwordChanged = true;
             }
 
             userBusiness.Mode = UserBusiness.enMode.Update;
+
             if (!await userBusiness.SaveAsync())
                 return StatusCode(500, "A problem occurred while updating the profile.");
+
+            string newProfile = $"FullName: {userBusiness.FullName}, Email: {userBusiness.Email}, PasswordChanged: {passwordChanged}";
+
+            await AuditLogBusiness.LogAsync(_context, User.GetUserId(), "Profile Updated", oldProfile, newProfile);
 
             return NoContent();
         }
@@ -179,12 +193,16 @@ namespace BankSystem.API.Controllers
             if (user.Role == newRole)
                 return BadRequest($"User already has the {newRole} role.");
 
+            string oldRole = user.Role;
+
             user.Role = newRole;
             user.Mode = UserBusiness.enMode.Update;
             bool isUpdated = await user.SaveAsync();
 
             if (!isUpdated)
                 return StatusCode(500, "Failed to update user role.");
+
+            await AuditLogBusiness.LogAsync(_context, User.GetUserId(), "User Role Updated", $"TargetUserId: {id}, Role: {oldRole}", $"TargetUserId: {id}, Role: {newRole}");
 
             return Ok(new { message = $"User role updated to {newRole} successfully." });
         }
@@ -202,6 +220,8 @@ namespace BankSystem.API.Controllers
 
             if (!await userBusiness.SaveAsync())
                 return StatusCode(500, "Failed to unlock user account.");
+
+            await AuditLogBusiness.LogAsync(_context, User.GetUserId(), "User Account Unlocked", $"TargetUserId: {id}, Locked", $"TargetUserId: {id}, Unlocked");
 
             return Ok(new { message = "User account unlocked successfully." });
         }
@@ -221,6 +241,8 @@ namespace BankSystem.API.Controllers
 
             if (!await userBusiness.SaveAsync())
                 return StatusCode(500, "Failed to activate user account.");
+
+            await AuditLogBusiness.LogAsync(_context, User.GetUserId(), "User Activated", $"TargetUserId: {id}, IsActive: False", $"TargetUserId: {id}, IsActive: True");
 
             return Ok(new { message = "User account activated successfully." });
         }

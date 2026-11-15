@@ -63,33 +63,18 @@ namespace BankSystem.Business.BusinessObjects
                 CreatedAt = DateTime.UtcNow
             };
 
-            using var dbTransaction = await _context.Database.BeginTransactionAsync();
+            await _context.Accounts.AddAsync(entity);
+            int rows = await _context.SaveChangesAsync();
 
-            try
+            if (rows > 0)
             {
-                await _context.Accounts.AddAsync(entity);
-                int rows = await _context.SaveChangesAsync();
-
-                if (rows <= 0) throw new Exception("Insertion failed.");
-
                 this.Id = entity.Id;
                 this.AccountNumber = entity.AccountNumber;
-
-                string newAccountJson = System.Text.Json.JsonSerializer.Serialize(this.ToDTO);
-
-                var auditLog = new AuditLogBusiness(_context, new AuditLogDTO(0, this.CustomerId, "Account Creation",
-                    null, newAccountJson, DateTime.UtcNow));
-
-                await auditLog.SaveAsync();
-
-                await dbTransaction.CommitAsync();
+                this.CreatedAt = entity.CreatedAt;
                 return true;
             }
-            catch (Exception)
-            {
-                await dbTransaction.RollbackAsync();
-                return false;
-            }
+
+            return false;
         }
 
         private async Task<bool> _UpdateAccountAsync()
@@ -98,39 +83,14 @@ namespace BankSystem.Business.BusinessObjects
 
             if (entity == null) return false;
 
-            var oldDto = new AccountDTO(entity.Id, entity.CustomerId, entity.AccountNumber,
-                entity.AccountType, entity.Balance, entity.Currency, entity.DailyWithdrawalLimit, entity.IsActive, entity.CreatedAt);
-
-            string oldAccountJson = System.Text.Json.JsonSerializer.Serialize(oldDto);
-
             entity.AccountType = this.AccountType;
             entity.DailyWithdrawalLimit = this.DailyWithdrawalLimit;
             entity.IsActive = this.IsActive;
 
-            using var dbTransaction = await _context.Database.BeginTransactionAsync();
+            _context.Accounts.Update(entity);
+            int rows = await _context.SaveChangesAsync();
 
-            try
-            {
-                _context.Accounts.Update(entity);
-
-                int rows = await _context.SaveChangesAsync();
-                if (rows <= 0) throw new Exception("Update failed.");
-
-                string newAccountJson = System.Text.Json.JsonSerializer.Serialize(this.ToDTO);
-
-                var auditLog = new AuditLogBusiness(_context, new AuditLogDTO(0, this.CustomerId, 
-                    "Account Settings Updated", oldAccountJson, newAccountJson, DateTime.UtcNow));
-
-                await auditLog.SaveAsync();
-
-                await dbTransaction.CommitAsync();
-                return true;
-            }
-            catch (Exception)
-            {
-                await dbTransaction.RollbackAsync();
-                return false;
-            }
+            return rows > 0;
         }
 
         private async Task<bool> _SaveEntityOnlyAsync()
@@ -139,7 +99,6 @@ namespace BankSystem.Business.BusinessObjects
             if (entity == null) return false;
 
             entity.Balance = this.Balance;
-        
 
             _context.Accounts.Update(entity);
             return (await _context.SaveChangesAsync()) > 0;
@@ -151,43 +110,17 @@ namespace BankSystem.Business.BusinessObjects
 
             if (entity == null) return false;
 
-            var oldDto = new AccountDTO(entity.Id, entity.CustomerId, entity.AccountNumber, entity.AccountType, 
-                entity.Balance, entity.Currency, entity.DailyWithdrawalLimit, entity.IsActive, entity.CreatedAt);
-
-            string oldAccountJson = System.Text.Json.JsonSerializer.Serialize(oldDto);
-
             entity.IsActive = false;
-            this.IsActive = false;   
+            this.IsActive = false;
 
-            using var dbTransaction = await _context.Database.BeginTransactionAsync();
+            _context.Accounts.Update(entity);
+            int rows = await _context.SaveChangesAsync();
 
-            try
-            {
-                _context.Accounts.Update(entity);
-                int rows = await _context.SaveChangesAsync();
-                if (rows <= 0) throw new Exception("Closure failed.");
-
-                string newAccountJson = System.Text.Json.JsonSerializer.Serialize(this.ToDTO);
-
-                var auditLog = new AuditLogBusiness(_context, new AuditLogDTO(0, this.CustomerId, "Account Closed (Soft Delete)",
-                    oldAccountJson, newAccountJson, DateTime.UtcNow));
-
-                await auditLog.SaveAsync();
-
-                await dbTransaction.CommitAsync();
-                return true;
-            }
-            catch (Exception)
-            {
-                await dbTransaction.RollbackAsync();
-                return false;
-            }
+            return rows > 0;
         }
 
         public async Task<TransactionBusiness?> Deposit(TransactionDTO transactionDto)
         {
-            string oldValuesJson = System.Text.Json.JsonSerializer.Serialize(this.ToDTO);
-
             this.Balance += transactionDto.Amount;
             this.Mode = AccountBusiness.enMode.Update;
 
@@ -209,13 +142,6 @@ namespace BankSystem.Business.BusinessObjects
                 {
                     throw new Exception("Critical error during deposit database operations.");
                 }
-
-                string newValuesJson = System.Text.Json.JsonSerializer.Serialize(this.ToDTO);
-
-                var auditLog = new AuditLogBusiness(_context, new AuditLogDTO(0, this.CustomerId, "Cash Deposit Processing",
-                    oldValuesJson, newValuesJson, DateTime.UtcNow));
-
-                await auditLog.SaveAsync();
 
                 await dbTransaction.CommitAsync();
 
@@ -240,8 +166,6 @@ namespace BankSystem.Business.BusinessObjects
                 return null;
             }
 
-            string oldValuesJson = System.Text.Json.JsonSerializer.Serialize(this.ToDTO);
-
             this.Balance -= transactionDto.Amount;
             this.Mode = AccountBusiness.enMode.Update;
 
@@ -264,13 +188,6 @@ namespace BankSystem.Business.BusinessObjects
                     throw new Exception("Critical error during withdrawal database operations.");
                 }
 
-                string newValuesJson = System.Text.Json.JsonSerializer.Serialize(this.ToDTO);
-
-                var auditLog = new AuditLogBusiness(_context, new AuditLogDTO(0, this.CustomerId, "Cash Withdrawal Processing",
-                    oldValuesJson, newValuesJson, DateTime.UtcNow));
-
-                await auditLog.SaveAsync();
-
                 await dbTransaction.CommitAsync();
                 return txBusiness;
             }
@@ -287,12 +204,6 @@ namespace BankSystem.Business.BusinessObjects
             if (sourceAccount.Balance < transactionDto.Amount) return null;
 
             if (transactionDto.Amount > sourceAccount.DailyWithdrawalLimit) return null;
-
-            string oldValuesJson = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                Source = sourceAccount.ToDTO,
-                Destination = destAccount.ToDTO
-            });
 
             sourceAccount.Balance -= transactionDto.Amount;
             destAccount.Balance += transactionDto.Amount;
@@ -316,17 +227,6 @@ namespace BankSystem.Business.BusinessObjects
                 {
                     throw new Exception("Critical error during database operations.");
                 }
-
-                string newValuesJson = System.Text.Json.JsonSerializer.Serialize(new
-                {
-                    Source = sourceAccount.ToDTO,
-                    Destination = destAccount.ToDTO
-                });
-
-                var auditLog = new AuditLogBusiness(context, new AuditLogDTO(0, sourceAccount.CustomerId, "Funds Transfer Outgoing",
-                    oldValuesJson, newValuesJson, DateTime.UtcNow));
-
-                await auditLog.SaveAsync();
 
                 await dbTransaction.CommitAsync();
                 return txBusiness;

@@ -83,5 +83,14 @@ namespace BankSystem.Business.BusinessObjects
                 .AsNoTracking()
                 .ToListAsync();
         }
+
+        public static async Task<bool> LogAsync(BankSystemDbContext context, Guid? userId,
+                                string action, string? oldValues = null, string? newValues = null)
+        {
+            var dto = new AuditLogDTO(0, userId, action, oldValues, newValues, DateTime.UtcNow);
+            var auditLog = new AuditLogBusiness(context, dto);
+            return await auditLog.SaveAsync();
+        }
+
     }
 }

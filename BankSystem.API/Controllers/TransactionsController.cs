@@ -46,7 +46,7 @@ namespace BankSystem.API.Controllers
 
             if (!User.IsBankStaff() && accountExist.CustomerId != User.GetUserId())
                 return Forbid();
-         
+
             var history = await TransactionBusiness.GetAccountHistoryAsync(_context, accountId);
             return Ok(history);
         }
@@ -106,10 +106,20 @@ namespace BankSystem.API.Controllers
                 return BadRequest("Destination account is invalid or inactive.");
             }
 
+            decimal oldBalance = accountBusiness.Balance;
+
             var completedTx = await accountBusiness.Deposit(transactionDto);
 
             if (completedTx != null)
             {
+                await AuditLogBusiness.LogAsync(
+                    _context,
+                    User.GetUserId(),
+                    "Deposit",
+                    $"AccountId: {accountBusiness.Id}, Balance: {oldBalance}",
+                    $"AccountId: {accountBusiness.Id}, Balance: {accountBusiness.Balance}, Amount: +{transactionDto.Amount}, TxId: {completedTx.Id}"
+                );
+
                 return CreatedAtAction(nameof(GetTransactionById), new { id = completedTx.Id }, completedTx.ToDTO);
             }
             else
@@ -139,10 +149,20 @@ namespace BankSystem.API.Controllers
 
             if (transactionDto.Amount > accountBusiness.DailyWithdrawalLimit) return BadRequest("Amount exceeds daily withdrawal limit.");
 
+            decimal oldBalance = accountBusiness.Balance;
+
             var completedTx = await accountBusiness.Withdraw(transactionDto);
 
             if (completedTx != null)
             {
+                await AuditLogBusiness.LogAsync(
+                    _context,
+                    User.GetUserId(),
+                    "Withdraw",
+                    $"AccountId: {accountBusiness.Id}, Balance: {oldBalance}",
+                    $"AccountId: {accountBusiness.Id}, Balance: {accountBusiness.Balance}, Amount: -{transactionDto.Amount}, TxId: {completedTx.Id}"
+                );
+
                 return CreatedAtAction(nameof(GetTransactionById), new { id = completedTx.Id }, completedTx.ToDTO);
             }
             else
@@ -174,15 +194,26 @@ namespace BankSystem.API.Controllers
 
             if (!User.IsBankStaff() && sourceAccount.CustomerId != User.GetUserId())
                 return Forbid();
-            
+
 
             if (sourceAccount.Balance < transactionDto.Amount) return BadRequest("Insufficient funds for this transfer.");
             if (transactionDto.Amount > sourceAccount.DailyWithdrawalLimit) return BadRequest("Amount exceeds daily withdrawal limit.");
+
+            decimal oldSourceBalance = sourceAccount.Balance;
+            decimal oldDestBalance = destAccount.Balance;
 
             var completedTx = await AccountBusiness.TransferFundsAsync(_context, sourceAccount, destAccount, transactionDto);
 
             if (completedTx != null)
             {
+                await AuditLogBusiness.LogAsync(
+                    _context,
+                    User.GetUserId(),
+                    "Transfer",
+                    $"FromAcc: {sourceAccount.Id} (Bal: {oldSourceBalance}), ToAcc: {destAccount.Id} (Bal: {oldDestBalance})",
+                    $"FromAcc: {sourceAccount.Id} (Bal: {sourceAccount.Balance}), ToAcc: {destAccount.Id} (Bal: {destAccount.Balance}), Amount: {transactionDto.Amount}, TxId: {completedTx.Id}"
+                );
+
                 return CreatedAtAction(nameof(GetTransactionById), new { id = completedTx.Id }, completedTx.ToDTO);
             }
             else
