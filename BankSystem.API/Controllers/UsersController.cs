@@ -1,4 +1,5 @@
 ﻿using BankDataAccessLayer;
+using BankDataAccessLayer.DTOs;
 using BankSystem.Business.BusinessObjects;
 using BankSystem.DataAccess.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -20,6 +21,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpGet("All")]
+        [Authorize(Roles = "Manager,Employee")]
         public async Task<ActionResult<IEnumerable<UserDTO>>> GetAllUsers()
         {
             var users = await UserBusiness.GetAllUsersAsync(_context);
@@ -27,6 +29,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpGet("{id:guid}")]
+        [Authorize(Roles = "Manager,Employee")]
         public async Task<ActionResult<UserDTO>> GetUserById(Guid id)
         {
             if (id == Guid.Empty)
@@ -64,6 +67,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpPut("deactivate/{id:guid}")]
+        [Authorize(Roles = "Manager")]
         public async Task<IActionResult> DeactivateUser(Guid id)
         {
             if (id == Guid.Empty)
@@ -89,6 +93,7 @@ namespace BankSystem.API.Controllers
 
 
         [HttpGet("{email}")]
+        [Authorize(Roles = "Manager,Employee")]
         public async Task<ActionResult<UserDTO>> GetUserByEmail(string email)
         {
             if (string.IsNullOrWhiteSpace(email))
@@ -113,85 +118,107 @@ namespace BankSystem.API.Controllers
             return Ok(userBusiness.ToDTO);
         }
 
-        [HttpPut("{id:guid}")]
-        public async Task<IActionResult> UpdateUser(Guid id, [FromBody] UserUpdateDTO userUpdateDto)
+        [HttpPut("profile/{id:guid}")]
+        [Authorize]
+        public async Task<IActionResult> UpdateProfile(Guid id, [FromBody] UserProfileUpdateDTO profileDto)
         {
-            if (userUpdateDto == null) return BadRequest("Invalid user data.");
-            if (id != userUpdateDto.Id) return BadRequest("User ID mismatch.");
+            if (profileDto == null) return BadRequest("Invalid data.");
+            if (id != profileDto.Id) return BadRequest("User ID mismatch.");
 
             var userBusiness = await UserBusiness.FindAsync(_context, id);
             if (userBusiness == null) return NotFound($"User with ID {id} not found.");
 
-            if (!string.IsNullOrWhiteSpace(userUpdateDto.Email) && userUpdateDto.Email != userBusiness.Email)
+            if (!string.IsNullOrWhiteSpace(profileDto.FullName))
+                userBusiness.FullName = profileDto.FullName;
+
+            if (!string.IsNullOrWhiteSpace(profileDto.Email) && profileDto.Email != userBusiness.Email)
             {
                 string emailPattern = @"^[^@\s]+@[^@\s]+\.[^@\s]+$";
-                if (!System.Text.RegularExpressions.Regex.IsMatch(userUpdateDto.Email, emailPattern))
-                {
-                    return BadRequest("Invalid email format. Must be complete (e.g., example@domain.com).");
-                }
+                if (!System.Text.RegularExpressions.Regex.IsMatch(profileDto.Email, emailPattern))
+                    return BadRequest("Invalid email format.");
 
-                bool isExist = await UserBusiness.IsUserExist(_context, userUpdateDto.Email);
-                if (isExist) return Conflict("This email is already taken by another user.");
+                if (await UserBusiness.IsUserExist(_context, profileDto.Email))
+                    return Conflict("This email is already taken.");
 
-                userBusiness.Email = userUpdateDto.Email;
+                userBusiness.Email = profileDto.Email;
             }
 
-            if (!string.IsNullOrWhiteSpace(userUpdateDto.PasswordHash) && userUpdateDto.PasswordHash != userBusiness.PasswordHash)
+            if (!string.IsNullOrWhiteSpace(profileDto.Password))
             {
                 string passwordPattern = @"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z\d]{8,}$";
-                if (!System.Text.RegularExpressions.Regex.IsMatch(userUpdateDto.PasswordHash, passwordPattern))
-                {
-                    return BadRequest("Password is too weak. It must contain at least one uppercase letter, one lowercase letter, and one number.");
-                }
+                if (!System.Text.RegularExpressions.Regex.IsMatch(profileDto.Password, passwordPattern))
+                    return BadRequest("Password is too weak.");
 
-                userBusiness.PasswordHash = userUpdateDto.PasswordHash; 
-            }
-
-            if (!string.IsNullOrWhiteSpace(userUpdateDto.FullName) && userUpdateDto.FullName != userBusiness.FullName)
-            {
-                userBusiness.FullName = userUpdateDto.FullName;
-            }
-
-            if (!string.IsNullOrWhiteSpace(userUpdateDto.Role) && userUpdateDto.Role != userBusiness.Role)
-            {
-                if (userUpdateDto.Role == "Admin" || userUpdateDto.Role == "Manager" || userUpdateDto.Role == "Employee" || userUpdateDto.Role == "Customer")
-                {
-                    userBusiness.Role = userUpdateDto.Role;
-                }
-                else
-                {
-                    return BadRequest("Invalid Role specified.");
-                }
-            }
-
-            if (userUpdateDto.IsActive.HasValue && userUpdateDto.IsActive.Value != userBusiness.IsActive)
-            {
-                userBusiness.IsActive = userUpdateDto.IsActive.Value;
-            }
-
-            if (userUpdateDto.FailedLoginAttempts.HasValue && userUpdateDto.FailedLoginAttempts.Value != userBusiness.FailedLoginAttempts)
-            {
-                if (userUpdateDto.FailedLoginAttempts.Value < 0)
-                {
-                    return BadRequest("Failed login attempts cannot be a negative number.");
-                }
-                userBusiness.FailedLoginAttempts = userUpdateDto.FailedLoginAttempts.Value;
-            }
-
-            if (userUpdateDto.LockoutEnd != userBusiness.LockoutEnd)
-            {
-                userBusiness.LockoutEnd = userUpdateDto.LockoutEnd;
+                userBusiness.PasswordHash = profileDto.Password;
             }
 
             userBusiness.Mode = UserBusiness.enMode.Update;
-            bool isSaved = await userBusiness.SaveAsync();
-
-            if (!isSaved) return StatusCode(500, "A problem occurred while updating the user.");
+            if (!await userBusiness.SaveAsync())
+                return StatusCode(500, "A problem occurred while updating the profile.");
 
             return NoContent();
         }
 
+        [HttpPut("{id}/role")]
+        [Authorize(Roles = "Manager")]
+        public async Task<IActionResult> UpdateUserRole(Guid id, [FromBody] string newRole)
+        {
+            if (newRole != "Manager" && newRole != "Employee" && newRole != "Customer")
+                return BadRequest("Invalid role. Allowed roles: Manager, Employee, Customer.");
 
+            var user = await UserBusiness.FindAsync(_context, id);
+
+            if (user == null)
+                return NotFound("User not found.");
+
+            if (user.Role == newRole)
+                return BadRequest($"User already has the {newRole} role.");
+
+            user.Role = newRole;
+            user.Mode = UserBusiness.enMode.Update;
+            bool isUpdated = await user.SaveAsync();
+
+            if (!isUpdated)
+                return StatusCode(500, "Failed to update user role.");
+
+            return Ok(new { message = $"User role updated to {newRole} successfully." });
+        }
+
+        [HttpPut("{id:guid}/unlock")]
+        [Authorize(Roles = "Manager")]
+        public async Task<IActionResult> UnlockUser(Guid id)
+        {
+            var userBusiness = await UserBusiness.FindAsync(_context, id);
+            if (userBusiness == null) return NotFound($"User with ID {id} not found.");
+
+            userBusiness.FailedLoginAttempts = 0;
+            userBusiness.LockoutEnd = null;
+            userBusiness.Mode = UserBusiness.enMode.Update;
+
+            if (!await userBusiness.SaveAsync())
+                return StatusCode(500, "Failed to unlock user account.");
+
+            return Ok(new { message = "User account unlocked successfully." });
+        }
+
+        [HttpPut("{id:guid}/activate")]
+        [Authorize(Roles = "Manager")]
+        public async Task<IActionResult> ActivateUser(Guid id)
+        {
+            var userBusiness = await UserBusiness.FindAsync(_context, id);
+            if (userBusiness == null) return NotFound($"User with ID {id} not found.");
+
+            if (userBusiness.IsActive)
+                return BadRequest("User account is already active.");
+
+            userBusiness.IsActive = true;
+            userBusiness.Mode = UserBusiness.enMode.Update;
+
+            if (!await userBusiness.SaveAsync())
+                return StatusCode(500, "Failed to activate user account.");
+
+            return Ok(new { message = "User account activated successfully." });
+        }
 
     }
 }

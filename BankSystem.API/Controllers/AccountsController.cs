@@ -1,4 +1,5 @@
 ﻿using BankDataAccessLayer;
+using BankDataAccessLayer.DTOs;
 using BankSystem.Business.BusinessObjects;
 using BankSystem.DataAccess.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -22,6 +23,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpGet("All")]
+        [Authorize(Roles = "Manager,Employee")]
         public async Task<ActionResult<IEnumerable<AccountDTO>>> GetAllAccounts()
         {
             var accounts = await AccountBusiness.GetAllAccountsAsync(_context);
@@ -77,6 +79,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpPost("create")]
+        [Authorize(Roles = "Manager,Employee")]
         public async Task<ActionResult<AccountDTO>> CreateAccount([FromBody] AccountDTO accountDto)
         {
             if (accountDto == null) return BadRequest("Invalid account data.");
@@ -99,35 +102,45 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpPut("{id:guid}")]
-        public async Task<IActionResult> UpdateAccount(Guid id, [FromBody] AccountDTO accountDto)
+        [Authorize(Roles = "Manager,Employee")]
+        public async Task<IActionResult> UpdateAccount(Guid id, [FromBody] AccountUpdateDTO accountUpdateDto)
         {
-            if (accountDto == null) return BadRequest("Invalid account data.");
-
-            if (id != accountDto.Id) return BadRequest("Account ID mismatch.");
+            if (accountUpdateDto == null) return BadRequest("Invalid account data.");
+            if (id != accountUpdateDto.Id) return BadRequest("Account ID mismatch.");
 
             var accountBusiness = await AccountBusiness.FindAsync(_context, id);
-            if (accountBusiness == null)
-            {
-                return NotFound($"Account with ID {id} not found.");
-            }
+            if (accountBusiness == null) return NotFound($"Account with ID {id} not found.");
 
-            accountBusiness.AccountType = accountDto.AccountType;
-            accountBusiness.DailyWithdrawalLimit = accountDto.DailyWithdrawalLimit;
-            accountBusiness.IsActive = accountDto.IsActive;
+            accountBusiness.AccountType = accountUpdateDto.AccountType;
+            accountBusiness.DailyWithdrawalLimit = accountUpdateDto.DailyWithdrawalLimit;
             accountBusiness.Mode = AccountBusiness.enMode.Update;
 
-            bool isSaved = await accountBusiness.SaveAsync();
-
-            if (!isSaved)
-            {
+            if (!await accountBusiness.SaveAsync())
                 return StatusCode(500, "A problem occurred while updating the account.");
-            }
 
             return NoContent();
         }
 
+        [HttpPut("{id:guid}/activate")]
+        [Authorize(Roles = "Manager")]
+        public async Task<IActionResult> ActivateAccount(Guid id)
+        {
+            var accountBusiness = await AccountBusiness.FindAsync(_context, id);
+            if (accountBusiness == null) return NotFound($"Account with ID {id} not found.");
+
+            if (accountBusiness.IsActive) return BadRequest("Account is already active.");
+
+            accountBusiness.IsActive = true;
+            accountBusiness.Mode = AccountBusiness.enMode.Update;
+
+            if (!await accountBusiness.SaveAsync())
+                return StatusCode(500, "Failed to activate account.");
+
+            return Ok(new { message = "Account activated successfully." });
+        }
 
         [HttpPut("close/{id:guid}")]
+        [Authorize(Roles = "Manager")]
         public async Task<IActionResult> CloseAccount(Guid id)
         {
             if (id == Guid.Empty)
