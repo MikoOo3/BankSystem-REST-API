@@ -44,6 +44,22 @@ builder.Services.AddAuthentication(options =>
     };
 });
 
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("BankStaff", policy =>
+        policy.RequireRole("Manager", "Employee")
+              .RequireClaim("IsActive", "True"));
+
+    options.AddPolicy("BankManager", policy =>
+        policy.RequireRole("Manager")
+              .RequireClaim("IsActive", "True"));
+
+    options.AddPolicy("ActiveUser", policy =>
+        policy.RequireAuthenticatedUser()
+              .RequireClaim("IsActive", "True"));
+});
+
+
 builder.Services.AddScoped<BankSystem.API.Services.JwtTokenService>();
 
 builder.Services.AddControllers();

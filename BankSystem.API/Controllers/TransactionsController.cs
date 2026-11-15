@@ -1,4 +1,5 @@
 ﻿using BankDataAccessLayer;
+using BankSystem.API.Services;
 using BankSystem.Business.BusinessObjects;
 using BankSystem.DataAccess.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -11,7 +12,7 @@ namespace BankSystem.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize]
+    [Authorize(Policy = "ActiveUser")]
     public class TransactionsController : ControllerBase
     {
         private readonly BankSystemDbContext _context;
@@ -22,7 +23,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpGet("All")]
-        [Authorize(Roles = "Manager,Employee")]
+        [Authorize(Policy = "BankStaff")]
         public async Task<ActionResult<IEnumerable<TransactionDTO>>> GetAllTransactions()
         {
             var transactions = await TransactionBusiness.GetAllTransactionsAsync(_context);
@@ -43,6 +44,9 @@ namespace BankSystem.API.Controllers
                 return NotFound($"Account with ID {accountId} not found.");
             }
 
+            if (!User.IsBankStaff() && accountExist.CustomerId != User.GetUserId())
+                return Forbid();
+         
             var history = await TransactionBusiness.GetAccountHistoryAsync(_context, accountId);
             return Ok(history);
         }
@@ -62,11 +66,30 @@ namespace BankSystem.API.Controllers
                 return NotFound($"Transaction with ID {id} not found.");
             }
 
+            if (!User.IsBankStaff())
+            {
+                var currentUserId = User.GetUserId();
+
+                var sourceAcc = transactionBusiness.SourceAccountId.HasValue
+                    ? await AccountBusiness.FindAsync(_context, transactionBusiness.SourceAccountId.Value)
+                    : null;
+
+                var destAcc = transactionBusiness.DestinationAccountId.HasValue
+                    ? await AccountBusiness.FindAsync(_context, transactionBusiness.DestinationAccountId.Value)
+                    : null;
+
+                bool isOwner = (sourceAcc != null && sourceAcc.CustomerId == currentUserId) ||
+                               (destAcc != null && destAcc.CustomerId == currentUserId);
+
+                if (!isOwner)
+                    return Forbid();
+            }
+
             return Ok(transactionBusiness.ToDTO);
         }
 
         [HttpPost("deposit")]
-        [Authorize(Roles = "Manager,Employee")]
+        [Authorize(Policy = "BankStaff")]
         public async Task<ActionResult<TransactionDTO>> Deposit([FromBody] TransactionDTO transactionDto)
         {
             if (transactionDto == null) return BadRequest("Invalid transaction data.");
@@ -96,7 +119,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpPost("withdraw")]
-        [Authorize(Roles = "Manager,Employee")]
+        [Authorize(Policy = "BankStaff")]
         public async Task<ActionResult<TransactionDTO>> Withdraw([FromBody] TransactionDTO transactionDto)
         {
             if (transactionDto == null) return BadRequest("Invalid transaction data.");
@@ -149,6 +172,10 @@ namespace BankSystem.API.Controllers
             if (sourceAccount == null || !sourceAccount.IsActive) return BadRequest("Source account is invalid or inactive.");
             if (destAccount == null || !destAccount.IsActive) return BadRequest("Destination account is invalid or inactive.");
 
+            if (!User.IsBankStaff() && sourceAccount.CustomerId != User.GetUserId())
+                return Forbid();
+            
+
             if (sourceAccount.Balance < transactionDto.Amount) return BadRequest("Insufficient funds for this transfer.");
             if (transactionDto.Amount > sourceAccount.DailyWithdrawalLimit) return BadRequest("Amount exceeds daily withdrawal limit.");
 
@@ -163,6 +190,5 @@ namespace BankSystem.API.Controllers
                 return StatusCode(500, "A critical error occurred. The transfer was safely rolled back.");
             }
         }
-
     }
 }

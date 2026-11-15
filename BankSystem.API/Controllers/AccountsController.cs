@@ -1,5 +1,6 @@
 ﻿using BankDataAccessLayer;
 using BankDataAccessLayer.DTOs;
+using BankSystem.API.Services;
 using BankSystem.Business.BusinessObjects;
 using BankSystem.DataAccess.DTOs;
 using Microsoft.AspNetCore.Authorization;
@@ -12,7 +13,7 @@ namespace BankSystem.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize]
+    [Authorize(Policy = "ActiveUser")]
     public class AccountsController : ControllerBase
     {
         private readonly BankSystemDbContext _context;
@@ -23,7 +24,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpGet("All")]
-        [Authorize(Roles = "Manager,Employee")]
+        [Authorize(Policy = "BankStaff")]
         public async Task<ActionResult<IEnumerable<AccountDTO>>> GetAllAccounts()
         {
             var accounts = await AccountBusiness.GetAllAccountsAsync(_context);
@@ -45,6 +46,10 @@ namespace BankSystem.API.Controllers
                 return NotFound($"Account with ID {id} not found.");
             }
 
+            if (!User.IsBankStaff() && accountBusiness.CustomerId != User.GetUserId())
+                return Forbid();
+            
+
             return Ok(accountBusiness.ToDTO);
         }
 
@@ -63,6 +68,9 @@ namespace BankSystem.API.Controllers
                 return NotFound($"Account number {accountNumber} not found.");
             }
 
+            if (!User.IsBankStaff() && accountBusiness.CustomerId != User.GetUserId())
+                return Forbid();
+            
             return Ok(accountBusiness.ToDTO);
         }
 
@@ -74,12 +82,16 @@ namespace BankSystem.API.Controllers
                 return BadRequest("Invalid Customer ID format.");
             }
 
+            if (!User.IsBankStaff() && User.GetUserId() != customerId)
+                return Forbid();
+            
+
             var accounts = await AccountBusiness.GetCustomerAccountsAsync(_context, customerId);
             return Ok(accounts);
         }
 
         [HttpPost("create")]
-        [Authorize(Roles = "Manager,Employee")]
+        [Authorize(Policy = "BankStaff")]
         public async Task<ActionResult<AccountDTO>> CreateAccount([FromBody] AccountDTO accountDto)
         {
             if (accountDto == null) return BadRequest("Invalid account data.");
@@ -102,7 +114,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpPut("{id:guid}")]
-        [Authorize(Roles = "Manager,Employee")]
+        [Authorize(Policy = "BankStaff")]
         public async Task<IActionResult> UpdateAccount(Guid id, [FromBody] AccountUpdateDTO accountUpdateDto)
         {
             if (accountUpdateDto == null) return BadRequest("Invalid account data.");
@@ -122,7 +134,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpPut("{id:guid}/activate")]
-        [Authorize(Roles = "Manager")]
+        [Authorize(Policy = "BankManager")]
         public async Task<IActionResult> ActivateAccount(Guid id)
         {
             var accountBusiness = await AccountBusiness.FindAsync(_context, id);
@@ -140,7 +152,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpPut("close/{id:guid}")]
-        [Authorize(Roles = "Manager")]
+        [Authorize(Policy = "BankManager")]
         public async Task<IActionResult> CloseAccount(Guid id)
         {
             if (id == Guid.Empty)

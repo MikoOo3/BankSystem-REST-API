@@ -11,7 +11,7 @@ namespace BankSystem.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize(Roles = "Manager")]
+    [Authorize(Policy = "BankManager")]
     public class AuditLogsController : ControllerBase
     {
         private readonly BankSystemDbContext _context;
