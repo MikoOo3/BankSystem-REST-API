@@ -156,12 +156,40 @@ namespace BankSystem.Business.BusinessObjects
             return new UserBusiness(context, dto, enMode.Update);
         }
 
-        public static async Task<List<UserDTO>> GetAllUsersAsync(BankSystemDbContext context)
+        public static async Task<PagedResult<UserDTO>> GetAllUsersAsync(BankSystemDbContext context,int pageNumber = 1,int pageSize = 10)
         {
-            return await context.Users
-                .Select(u => new UserDTO(u.Id, u.FullName, u.Email, u.PasswordHash, u.Role, u.FailedLoginAttempts, u.LockoutEnd, u.IsActive, u.CreatedAt))
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1) pageSize = 10;
+            if (pageSize > 50) pageSize = 50;
+
+            var query = context.Users
                 .AsNoTracking()
+                .OrderByDescending(u => u.CreatedAt);
+
+            int totalCount = await query.CountAsync();
+
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(u => new UserDTO(
+                    u.Id,
+                    u.FullName,
+                    u.Email,
+                    u.PasswordHash,
+                    u.Role,
+                    u.FailedLoginAttempts,
+                    u.LockoutEnd,
+                    u.IsActive,
+                    u.CreatedAt))
                 .ToListAsync();
+
+            return new PagedResult<UserDTO>
+            {
+                Items = items,
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            };
         }
 
         public async Task<bool> DeactivateUserAsync()

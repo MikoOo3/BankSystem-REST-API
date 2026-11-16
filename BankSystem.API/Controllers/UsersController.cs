@@ -25,10 +25,10 @@ namespace BankSystem.API.Controllers
 
         [HttpGet("All")]
         [Authorize(Policy = "BankStaff")]
-        public async Task<ActionResult<IEnumerable<UserDTO>>> GetAllUsers()
+        public async Task<ActionResult<PagedResult<UserDTO>>> GetAllUsers([FromQuery] int pageNumber = 1,[FromQuery] int pageSize = 10)
         {
-            var users = await UserBusiness.GetAllUsersAsync(_context);
-            return Ok(users);
+            var pagedUsers = await UserBusiness.GetAllUsersAsync(_context, pageNumber, pageSize);
+            return Ok(pagedUsers);
         }
 
         [HttpGet("{id:guid}")]

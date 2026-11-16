@@ -67,22 +67,61 @@ namespace BankSystem.Business.BusinessObjects
             return new AuditLogBusiness(context, dto);
         }
 
-        public static async Task<List<AuditLogDTO>> GetAllLogsAsync(BankSystemDbContext context)
+        public static async Task<PagedResult<AuditLogDTO>> GetAllLogsAsync(BankSystemDbContext context, int pageNumber = 1, int pageSize = 10)
         {
-            return await context.AuditLogs
-                .Select(al => new AuditLogDTO(al.Id, al.UserId, al.Action, al.OldValues, al.NewValues, al.Timestamp))
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1) pageSize = 10;
+            if (pageSize > 50) pageSize = 50; 
+
+            var query = context.AuditLogs
                 .AsNoTracking()
+                .OrderByDescending(al => al.Timestamp);
+
+            int totalCount = await query.CountAsync();
+
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(al => new AuditLogDTO(al.Id, al.UserId, al.Action, al.OldValues, al.NewValues, al.Timestamp))
                 .ToListAsync();
+
+            return new PagedResult<AuditLogDTO>
+            {
+                Items = items,
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            };
         }
 
-        public static async Task<List<AuditLogDTO>> GetLogsByUserIdAsync(BankSystemDbContext context, Guid userId)
+        public static async Task<PagedResult<AuditLogDTO>> GetLogsByUserIdAsync(BankSystemDbContext context, Guid userId, int pageNumber = 1, int pageSize = 10)
         {
-            return await context.AuditLogs
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1) pageSize = 10;
+            if (pageSize > 50) pageSize = 50;
+
+            var query = context.AuditLogs
                 .Where(al => al.UserId == userId)
-                .Select(al => new AuditLogDTO(al.Id, al.UserId, al.Action, al.OldValues, al.NewValues, al.Timestamp))
                 .AsNoTracking()
+                .OrderByDescending(al => al.Timestamp);
+
+            int totalCount = await query.CountAsync();
+
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(al => new AuditLogDTO(al.Id, al.UserId, al.Action, al.OldValues, al.NewValues, al.Timestamp))
                 .ToListAsync();
+
+            return new PagedResult<AuditLogDTO>
+            {
+                Items = items,
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            };
         }
+
 
         public static async Task<bool> LogAsync(BankSystemDbContext context, Guid? userId,
                                 string action, string? oldValues = null, string? newValues = null)

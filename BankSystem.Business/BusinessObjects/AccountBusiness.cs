@@ -256,9 +256,21 @@ namespace BankSystem.Business.BusinessObjects
             return false;
         }
 
-        public static async Task<List<AccountDTO>> GetAllAccountsAsync(BankSystemDbContext context)
+        public static async Task<PagedResult<AccountDTO>> GetAllAccountsAsync(BankSystemDbContext context,int pageNumber = 1,int pageSize = 10)
         {
-            return await context.Accounts
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1) pageSize = 10;
+            if (pageSize > 50) pageSize = 50;
+
+            var query = context.Accounts
+                .AsNoTracking()
+                .OrderByDescending(a => a.CreatedAt);
+
+            int totalCount = await query.CountAsync();
+
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
                 .Select(a => new AccountDTO(
                     a.Id,
                     a.CustomerId,
@@ -269,8 +281,15 @@ namespace BankSystem.Business.BusinessObjects
                     a.DailyWithdrawalLimit,
                     a.IsActive,
                     a.CreatedAt))
-                .AsNoTracking()
                 .ToListAsync();
+
+            return new PagedResult<AccountDTO>
+            {
+                Items = items,
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            };
         }
 
         public static async Task<AccountBusiness?> FindAsync(BankSystemDbContext context, Guid id)
@@ -291,13 +310,42 @@ namespace BankSystem.Business.BusinessObjects
             return new AccountBusiness(context, dto, enMode.Update);
         }
 
-        public static async Task<List<AccountDTO>> GetCustomerAccountsAsync(BankSystemDbContext context, Guid customerId)
+        public static async Task<PagedResult<AccountDTO>> GetCustomerAccountsAsync(BankSystemDbContext context,Guid customerId,
+            int pageNumber = 1,int pageSize = 10)
         {
-            return await context.Accounts
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1) pageSize = 10;
+            if (pageSize > 50) pageSize = 50;
+
+            var query = context.Accounts
                 .Where(a => a.CustomerId == customerId)
-                .Select(a => new AccountDTO(a.Id, a.CustomerId, a.AccountNumber, a.AccountType, a.Balance, a.Currency, a.DailyWithdrawalLimit, a.IsActive, a.CreatedAt))
                 .AsNoTracking()
+                .OrderByDescending(a => a.CreatedAt);
+
+            int totalCount = await query.CountAsync();
+
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(a => new AccountDTO(
+                    a.Id,
+                    a.CustomerId,
+                    a.AccountNumber,
+                    a.AccountType,
+                    a.Balance,
+                    a.Currency,
+                    a.DailyWithdrawalLimit,
+                    a.IsActive,
+                    a.CreatedAt))
                 .ToListAsync();
+
+            return new PagedResult<AccountDTO>
+            {
+                Items = items,
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            };
         }
     }
 }

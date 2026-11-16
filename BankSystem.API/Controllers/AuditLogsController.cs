@@ -24,11 +24,10 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpGet("All")]
-
-        public async Task<ActionResult<IEnumerable<AuditLogDTO>>> GetAllLogs()
+        public async Task<ActionResult<PagedResult<AuditLogDTO>>> GetAllLogs([FromQuery] int pageNumber = 1, [FromQuery] int pageSize = 10)
         {
-            var logs = await AuditLogBusiness.GetAllLogsAsync(_context);
-            return Ok(logs);
+            var pagedLogs = await AuditLogBusiness.GetAllLogsAsync(_context, pageNumber, pageSize);
+            return Ok(pagedLogs);
         }
 
         [HttpGet("{id:long}")]
@@ -46,15 +45,16 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpGet("user/{userId:guid}")]
-        public async Task<ActionResult<IEnumerable<AuditLogDTO>>> GetLogsByUserId(Guid userId)
+        public async Task<ActionResult<PagedResult<AuditLogDTO>>> GetLogsByUserId(Guid userId,[FromQuery] int pageNumber = 1,
+            [FromQuery] int pageSize = 10)
         {
             if (userId == Guid.Empty)
             {
                 return BadRequest("Invalid User ID format.");
             }
 
-            var logs = await AuditLogBusiness.GetLogsByUserIdAsync(_context, userId);
-            return Ok(logs);
+            var pagedLogs = await AuditLogBusiness.GetLogsByUserIdAsync(_context, userId, pageNumber, pageSize);
+            return Ok(pagedLogs);
         }
     }
 }
