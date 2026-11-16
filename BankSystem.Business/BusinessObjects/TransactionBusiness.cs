@@ -1,9 +1,10 @@
-﻿using System;
+﻿using BankDataAccessLayer;
+using BankSystem.DataAccess.DTOs;
+using Microsoft.EntityFrameworkCore;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.EntityFrameworkCore;
-using BankDataAccessLayer;
 
 namespace BankSystem.Business.BusinessObjects
 {
@@ -73,20 +74,23 @@ namespace BankSystem.Business.BusinessObjects
             return new TransactionBusiness(context, dto);
         }
 
-        public static async Task<List<TransactionDTO>> GetAccountHistoryAsync(BankSystemDbContext context, Guid accountId)
+        public static async Task<PagedResult<TransactionDTO>> GetAccountHistoryAsync(BankSystemDbContext context, Guid accountId,
+                   int pageNumber = 1, int pageSize = 10)
         {
-            return await context.Transactions
-                .Where(t => t.SourceAccountId == accountId || t.DestinationAccountId == accountId)
-                .OrderByDescending(t => t.Timestamp)
-                .Select(t => new TransactionDTO(t.Id, t.SourceAccountId, t.DestinationAccountId, t.TransactionType, t.Amount, t.Description, t.Status, t.Timestamp))
-                .AsNoTracking()
-                .ToListAsync();
-        }
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1) pageSize = 10;
+            if (pageSize > 50) pageSize = 50;
 
-        public static async Task<List<TransactionDTO>> GetAllTransactionsAsync(BankSystemDbContext context)
-        {
-            return await context.Transactions
-                .OrderByDescending(t => t.Timestamp)
+            var query = context.Transactions
+                .Where(t => t.SourceAccountId == accountId || t.DestinationAccountId == accountId)
+                .AsNoTracking()
+                .OrderByDescending(t => t.Timestamp);
+
+            int totalCount = await query.CountAsync();
+
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
                 .Select(t => new TransactionDTO(
                     t.Id,
                     t.SourceAccountId,
@@ -96,8 +100,51 @@ namespace BankSystem.Business.BusinessObjects
                     t.Description,
                     t.Status,
                     t.Timestamp))
-                .AsNoTracking()
                 .ToListAsync();
+
+            return new PagedResult<TransactionDTO>
+            {
+                Items = items,
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            };
+        }
+
+        public static async Task<PagedResult<TransactionDTO>> GetAllTransactionsAsync(BankSystemDbContext context,int pageNumber = 1,
+            int pageSize = 10)
+        {
+            if (pageNumber < 1) pageNumber = 1;
+            if (pageSize < 1) pageSize = 10;
+            if (pageSize > 50) pageSize = 50;
+
+            var query = context.Transactions
+                .AsNoTracking()
+                .OrderByDescending(t => t.Timestamp);
+
+            int totalCount = await query.CountAsync();
+
+            var items = await query
+                .Skip((pageNumber - 1) * pageSize)
+                .Take(pageSize)
+                .Select(t => new TransactionDTO(
+                    t.Id,
+                    t.SourceAccountId,
+                    t.DestinationAccountId,
+                    t.TransactionType,
+                    t.Amount,
+                    t.Description,
+                    t.Status,
+                    t.Timestamp))
+                .ToListAsync();
+
+            return new PagedResult<TransactionDTO>
+            {
+                Items = items,
+                PageNumber = pageNumber,
+                PageSize = pageSize,
+                TotalCount = totalCount
+            };
         }
     }
 }

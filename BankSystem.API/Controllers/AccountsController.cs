@@ -27,10 +27,10 @@ namespace BankSystem.API.Controllers
 
         [HttpGet("All")]
         [Authorize(Policy = "BankStaff")]
-        public async Task<ActionResult<IEnumerable<AccountDTO>>> GetAllAccounts()
+        public async Task<ActionResult<PagedResult<AccountDTO>>> GetAllAccounts([FromQuery] int pageNumber = 1,[FromQuery] int pageSize = 10)
         {
-            var accounts = await AccountBusiness.GetAllAccountsAsync(_context);
-            return Ok(accounts);
+            var pagedAccounts = await AccountBusiness.GetAllAccountsAsync(_context, pageNumber, pageSize);
+            return Ok(pagedAccounts);
         }
 
         [HttpGet("{id:guid}")]
@@ -77,7 +77,7 @@ namespace BankSystem.API.Controllers
         }
 
         [HttpGet("customer/{customerId:guid}")]
-        public async Task<ActionResult<IEnumerable<AccountDTO>>> GetCustomerAccounts(Guid customerId)
+        public async Task<ActionResult<PagedResult<AccountDTO>>> GetCustomerAccounts(Guid customerId,[FromQuery] int pageNumber = 1,[FromQuery] int pageSize = 10)
         {
             if (customerId == Guid.Empty)
             {
@@ -87,9 +87,8 @@ namespace BankSystem.API.Controllers
             if (!User.IsBankStaff() && User.GetUserId() != customerId)
                 return Forbid();
 
-
-            var accounts = await AccountBusiness.GetCustomerAccountsAsync(_context, customerId);
-            return Ok(accounts);
+            var pagedAccounts = await AccountBusiness.GetCustomerAccountsAsync(_context, customerId, pageNumber, pageSize);
+            return Ok(pagedAccounts);
         }
 
         [HttpPost("create")]

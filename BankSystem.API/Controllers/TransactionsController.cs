@@ -26,14 +26,14 @@ namespace BankSystem.API.Controllers
 
         [HttpGet("All")]
         [Authorize(Policy = "BankStaff")]
-        public async Task<ActionResult<IEnumerable<TransactionDTO>>> GetAllTransactions()
+        public async Task<ActionResult<PagedResult<TransactionDTO>>> GetAllTransactions([FromQuery] int pageNumber = 1,[FromQuery] int pageSize = 10)
         {
-            var transactions = await TransactionBusiness.GetAllTransactionsAsync(_context);
-            return Ok(transactions);
+            var pagedTransactions = await TransactionBusiness.GetAllTransactionsAsync(_context, pageNumber, pageSize);
+            return Ok(pagedTransactions);
         }
 
         [HttpGet("account-history/{accountId:guid}")]
-        public async Task<ActionResult<IEnumerable<TransactionDTO>>> GetAccountHistory(Guid accountId)
+        public async Task<ActionResult<PagedResult<TransactionDTO>>> GetAccountHistory(Guid accountId,[FromQuery] int pageNumber = 1,[FromQuery] int pageSize = 10)
         {
             if (accountId == Guid.Empty)
             {
@@ -49,8 +49,8 @@ namespace BankSystem.API.Controllers
             if (!User.IsBankStaff() && accountExist.CustomerId != User.GetUserId())
                 return Forbid();
 
-            var history = await TransactionBusiness.GetAccountHistoryAsync(_context, accountId);
-            return Ok(history);
+            var pagedHistory = await TransactionBusiness.GetAccountHistoryAsync(_context, accountId, pageNumber, pageSize);
+            return Ok(pagedHistory);
         }
 
         [HttpGet("{id:guid}")]
