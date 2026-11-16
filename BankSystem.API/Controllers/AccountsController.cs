@@ -5,6 +5,7 @@ using BankSystem.Business.BusinessObjects;
 using BankSystem.DataAccess.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -14,6 +15,7 @@ namespace BankSystem.API.Controllers
     [Route("api/[controller]")]
     [ApiController]
     [Authorize(Policy = "ActiveUser")]
+    [EnableRateLimiting("GeneralApiLimiter")]
     public class AccountsController : ControllerBase
     {
         private readonly BankSystemDbContext _context;

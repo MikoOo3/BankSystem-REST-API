@@ -4,11 +4,13 @@ using BankSystem.Business;
 using BankSystem.Business.BusinessObjects;
 using BankSystem.DataAccess.DTOs.Auth;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace BankSystem.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    [EnableRateLimiting("AuthLimiter")]
     public class AuthController : ControllerBase
     {
         private readonly BankSystemDbContext _context;
