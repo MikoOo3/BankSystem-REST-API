@@ -5,6 +5,7 @@ using BankSystem.Business.BusinessObjects;
 using BankSystem.DataAccess.DTOs;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace BankSystem.API.Controllers
@@ -12,6 +13,7 @@ namespace BankSystem.API.Controllers
     [Route("api/[controller]")]
     [ApiController]
     [Authorize(Policy = "ActiveUser")]
+    [EnableRateLimiting("GeneralApiLimiter")]
     public class UsersController : ControllerBase
     {
         private readonly BankSystemDbContext _context;
@@ -52,6 +54,7 @@ namespace BankSystem.API.Controllers
 
         [HttpPost("register")]
         [AllowAnonymous]
+        [EnableRateLimiting("AuthLimiter")]
         public async Task<ActionResult<UserDTO>> RegisterUser([FromBody] UserDTO userDto)
         {
             if (userDto == null) return BadRequest("Invalid user data.");
