@@ -1,4 +1,5 @@
-﻿using BankDataAccessLayer;
+﻿using BankBusinessLayer;
+using BankDataAccessLayer;
 using BankSystem.DataAccess.DTOs;
 using Microsoft.EntityFrameworkCore;
 using System;
@@ -205,8 +206,24 @@ namespace BankSystem.Business.BusinessObjects
 
             if (transactionDto.Amount > sourceAccount.DailyWithdrawalLimit) return null;
 
+            decimal creditedAmount = transactionDto.Amount;
+
+            if (!string.Equals(sourceAccount.Currency, destAccount.Currency, StringComparison.OrdinalIgnoreCase))
+            {
+                var (conversionResult, errorMessage) = await CurrencyBusiness.CalculateExchangeAsync(
+                    context,
+                    sourceAccount.Currency,
+                    destAccount.Currency,
+                    transactionDto.Amount);
+
+                if (conversionResult == null || errorMessage != null)
+                    return null;
+
+                creditedAmount = conversionResult.ConvertedAmount;
+            }
+
             sourceAccount.Balance -= transactionDto.Amount;
-            destAccount.Balance += transactionDto.Amount;
+            destAccount.Balance += creditedAmount;
 
             sourceAccount.Mode = AccountBusiness.enMode.Update;
             destAccount.Mode = AccountBusiness.enMode.Update;
