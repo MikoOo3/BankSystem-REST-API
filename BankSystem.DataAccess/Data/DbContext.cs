@@ -15,6 +15,7 @@ public class BankSystemDbContext : DbContext
     public DbSet<Transaction> Transactions { get; set; } = null!;
     public DbSet<AuditLog> AuditLogs { get; set; } = null!;
     public DbSet<RefreshToken> RefreshTokens { get; set; } = null!;
+    public DbSet<Currency> Currencies { get; set; } = null!;
 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -90,6 +91,16 @@ public class BankSystemDbContext : DbContext
                   .WithMany(u => u.AuditLogs)
                   .HasForeignKey(al => al.UserId)
                   .OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<Currency>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Country).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.CurrencyCode).IsRequired().HasMaxLength(10);
+            entity.Property(e => e.CurrencyName).IsRequired().HasMaxLength(100);
+            entity.Property(e => e.Rate).HasColumnType("decimal(18, 6)");
+            entity.HasIndex(e => e.CurrencyCode);
         });
     }
 }
