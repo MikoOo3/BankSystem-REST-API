@@ -1,224 +1,207 @@
-\# 🏦 Core Banking REST API
+# Core Banking REST API
 
+A learning project: a banking REST API built with **ASP.NET Core** and **Entity Framework Core** using a 3-tier architecture. It focuses on authentication, role-based authorization, money movement between accounts (including cross-currency transfers), and an audit trail.
 
+> **Status:** educational project, not production-ready.
 
-A production-grade Core Banking REST API engineered with \*\*ASP.NET Core\*\* and \*\*Entity Framework Core\*\* using a clean \*\*3-Tier Architecture\*\*. Built with enterprise banking security, multi-currency financial integrity, and scalability in mind.
+---
 
+## Features
 
+### Authentication and authorization
+- **JWT access tokens** (default lifetime 30 minutes, configurable via `Jwt:DurationInMinutes`).
+- **Refresh tokens** with rotation: each refresh revokes the used token and issues a new one. Tokens are random (64 bytes), stored as **SHA-256 hashes**, and expire after 7 days. Logout revokes the supplied refresh token.
+- **Role-based access control** with three roles (`Manager`, `Employee`, `Customer`) and three policies: `BankManager`, `BankStaff`, `ActiveUser`.
+- **Ownership checks:** customers can only read or operate on their own users, accounts, and transactions. Staff can access all.
+- **Password security:** BCrypt hashing, and automatic lockout for 15 minutes after 5 consecutive failed logins.
 
-\---
+### Banking operations
+- Open, update, close, and reactivate accounts (`Savings` or `Current`).
+- **Deposits** and **withdrawals** (staff), and **transfers** between accounts (account owner or staff).
+- Operations run inside a database transaction (commit or rollback).
+- **Multi-currency:** each account has a currency. Rates are stored relative to USD, and conversion uses `amount / fromRate * toRate`, rounded to 2 decimals. Transfers between accounts of different currencies are converted automatically.
+- Managers can update exchange rates (the USD rate is fixed at 1.0). An update applies to every row that shares the same currency code.
 
+### Security and reliability
+- **Audit trail:** actions such as logins, failed logins, account changes, role changes, deposits, withdrawals, transfers, and rate updates are recorded with the acting user (taken from the JWT) and before/after values.
+- **Rate limiting** (sliding window): a global limit, a per-IP limit for auth endpoints, and a per-user limit for general endpoints.
+- **Global exception handling** that returns a `ProblemDetails` response with a `traceId` and never exposes stack traces.
+- **Pagination** on list endpoints through `PagedResult<T>` (page size is clamped to a maximum of 50, newest first).
+- Read queries use `AsNoTracking()` and DTO projections.
 
+---
 
-\## ✨ Key Features
+## Architecture
 
+The solution is split into three projects plus a SQL folder:
 
+| Project | Responsibility |
+|---|---|
+| `BankSystem.API` | Controllers, JWT token service, claims extensions, authorization policies, rate limiting, CORS, Swagger, global exception handler |
+| `BankSystem.Business` | Business logic: `UserBusiness`, `AccountBusiness`, `TransactionBusiness`, `CurrencyBusiness`, `AuditLogBusiness`, `RefreshTokenBusiness`, password hashing |
+| `BankSystem.DataAccess` | EF Core `DbContext`, entities, migrations, DTOs, `PagedResult<T>` |
+| `Database` | SQL scripts, including `Currencies_Seed.sql` for reference exchange rates |
 
-\### 🔐 Authentication \& Authorization
+### Data model
 
-\* \*\*JWT Bearer Authentication:\*\* Stateless access tokens paired with secure \*\*Refresh Token Rotation\*\* and revocation upon logout.
+`User` 1—* `Account` 1—* `Transaction` (as source or destination), plus `RefreshToken` and `AuditLog` linked to users, and a standalone `Currency` table with one row per country.
 
-\* \*\*Role-Based \& Policy-Based Access Control (RBAC):\*\* Fine-grained authorization policies (`BankManager`, `BankStaff`, `ActiveUser`) protecting sensitive financial and administrative operations.
+---
 
-\* \*\*Account Lockout \& Password Security:\*\* BCrypt password hashing with automatic account lockout after consecutive failed login attempts.
+## Getting Started
 
+### Prerequisites
+- [.NET 10 SDK](https://dotnet.microsoft.com/download). All projects target `net10.0`, and the solution uses the `.slnx` format.
+- SQL Server (LocalDB, Express, or Developer Edition).
+- The EF Core CLI tools, matching the EF Core 10 packages: `dotnet tool install --global dotnet-ef --version 10.0.14`
 
+### Setup
 
-\### 🛡️ Enterprise Security \& Resilience
+1. **Clone the repository**
 
-\* \*\*Event-Driven Audit Trail:\*\* Centralized audit logging capturing actor identity from JWT claims alongside pre- and post-operation snapshots to ensure full \*\*non-repudiation\*\*.
+   ```bash
+   git clone https://github.com/MikoOo3/BankSystem-REST-API.git
+   cd BankSystem-REST-API
+   ```
 
-\* \*\*Multi-Layered Sliding-Window Rate Limiting:\*\* Protects endpoints against brute-force attacks and traffic spikes using \*\*Global\*\*, \*\*Per-IP\*\* (`AuthLimiter`), \*\*Per-User\*\* (`GeneralApiLimiter`), and \*\*Per-Endpoint\*\* policies.
+2. **Configure secrets** with .NET User Secrets, so nothing sensitive is committed:
 
-\* \*\*Global Exception Handling:\*\* Centralized `IExceptionHandler` returning RFC-compliant `ProblemDetails` JSON responses with a unique `TraceId` while preventing sensitive stack trace disclosure.
+   ```bash
+   dotnet user-secrets init --project BankSystem.API
+   dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=.;Database=BankSystemDB;Trusted_Connection=True;TrustServerCertificate=True;" --project BankSystem.API
+   dotnet user-secrets set "Jwt:Key" "REPLACE_WITH_A_RANDOM_SECRET_OF_AT_LEAST_32_CHARACTERS" --project BankSystem.API
+   dotnet user-secrets set "Jwt:Issuer" "BankSystemAPI" --project BankSystem.API
+   dotnet user-secrets set "Jwt:Audience" "BankSystemClients" --project BankSystem.API
+   ```
 
+3. **Apply the database migrations**
 
+   ```bash
+   dotnet ef database update --project BankSystem.DataAccess --startup-project BankSystem.API
+   ```
 
-\### 💱 Financial Integrity, Multi-Currency \& Performance
+4. **Seed the currency rates.** Run `Database/Currencies_Seed.sql` against `BankSystemDB` (for example in SSMS). The script creates the `Currencies` table if it does not exist and inserts the data only when the table is empty, so it is safe to run more than once. Currency conversion and cross-currency transfers need this data.
 
-\* \*\*Atomic Database Transactions:\*\* Ensures deposits, withdrawals, and fund transfers execute with full ACID compliance (`Commit` / `Rollback`).
+   The seed has one row per country, so shared currencies such as `EUR`, `XOF`, `XAF`, and `USD` appear in several rows with the same rate. Each rate is the number of units of that currency per 1 USD, and the values are a static snapshot, not live rates.
 
-\* \*\*Currency Exchange \& Cross-Currency Transfers:\*\* Real-time USD-bridged currency conversion calculator (`Amount / FromRate \* ToRate`), manager-audited exchange rate updates, and automatic currency conversion during cross-currency account transfers.
+5. **Run the API**
 
-\* \*\*Standardized Offset Pagination:\*\* Consistent `PagedResult<T>` responses across list endpoints with built-in page size clamping (`MaxPageSize = 50`) and chronological ordering.
+   ```bash
+   dotnet run --project BankSystem.API --launch-profile https
+   ```
 
-\* \*\*Optimized Read Queries:\*\* Uses `AsNoTracking()` and DTO projections across read operations.
+   If your browser does not trust the local HTTPS certificate, run `dotnet dev-certs https --trust` once.
 
+6. **Open Swagger** at `https://localhost:7151/swagger` (or `http://localhost:5154/swagger` with the `http` profile). Swagger is only enabled in the Development environment, which both launch profiles set.
 
+### Creating the first Manager
 
-\---
+Registration always creates a `Customer`, and only a Manager can change roles. To bootstrap the first Manager, register a user through the API, then promote it directly in the database:
 
-
-
-\## 🏗️ Architecture
-
-
-
-The solution follows a clean \*\*3-Tier Architecture\*\* to maintain separation of concerns:
-
-
-
-\* \*\*`BankSystem.API`\*\*: RESTful Controllers, JWT Token Services, Custom Claims Extensions, Rate Limiting, CORS, Swagger/OpenAPI configuration, and Global Exception Handling Middleware.
-
-\* \*\*`BankSystem.Business`\*\*: Core domain logic, validation rules, atomic transaction orchestration, currency exchange calculations, BCrypt hashing, and business objects (`UserBusiness`, `AccountBusiness`, `TransactionBusiness`, `CurrencyBusiness`, `AuditLogBusiness`).
-
-\* \*\*`BankSystem.DataAccess`\*\*: Entity Framework Core `DbContext`, database entities, migrations, and Data Transfer Objects (`DTOs`, `PagedResult<T>`).
-
-\* \*\*`Database`\*\*: Standalone SQL initialization scripts (`Currencies\_Seed.sql`) for seeding reference exchange rates.
-
-
-
-\---
-
-
-
-\## 🚀 Getting Started
-
-
-
-\### Prerequisites
-
-\* \[.NET 8 SDK](https://microsoft.com) (or newer)
-
-\* SQL Server (LocalDB, Express, or Developer Edition)
-
-
-
-\### Setup \& Installation
-
-
-
-1\. \*\*Clone the repository\*\*
-
-&#x20;  ```bash
-
-&#x20;  git clone https://github.com<your-username>/<your-repo-name>.git
-
-&#x20;  cd <your-repo-name>
-
-&#x20;  ```
-
-
-
-2\. \*\*Configure Application Secrets (via .NET User Secrets)\*\*
-
-&#x20;  Initialize user secrets in `BankSystem.API` so sensitive keys are never committed to source control:
-
-&#x20;  ```bash
-
-&#x20;  dotnet user-secrets init --project BankSystem.API
-
-&#x20;  dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Server=.;Database=BankSystemDB;Trusted\_Connection=True;TrustServerCertificate=True;" --project BankSystem.API
-
-&#x20;  dotnet user-secrets set "Jwt:Key" "YOUR\_SUPER\_SECRET\_KEY\_AT\_LEAST\_32\_CHARACTERS\_LONG" --project BankSystem.API
-
-&#x20;  dotnet user-secrets set "Jwt:Issuer" "BankSystemAPI" --project BankSystem.API
-
-&#x20;  dotnet user-secrets set "Jwt:Audience" "BankSystemClients" --project BankSystem.API
-
-&#x20;  ```
-
-
-
-3\. \*\*Apply Database Migrations\*\*
-
-&#x20;  ```bash
-
-&#x20;  dotnet ef database update --project BankSystem.DataAccess --startup-project BankSystem.API
-
-&#x20;  ```
-
-
-
-4\. \*\*Seed Currency Exchange Rates\*\*
-
-&#x20;  Open SQL Server Management Studio (SSMS) and execute the SQL script located at `Database/Currencies\_Seed.sql` against `BankSystemDB` to create and populate the `Currencies` table.
-
-
-
-5\. \*\*Run the Application\*\*
-
-&#x20;  ```bash
-
-&#x20;  dotnet run --project BankSystem.API
-
-&#x20;  ```
-
-
-
-6\. \*\*Explore \& Test via Swagger\*\*
-
-&#x20;  \* Open `https://localhost:<port>/swagger` in your browser.
-
-&#x20;  \* Register or log in via `/api/Auth/login`, copy the `accessToken`, click \*\*Authorize\*\*, and enter your token to test protected endpoints.
-
-
-
-\---
-
-
-
-\## 📡 API Endpoints Overview
-
-
-
-| Controller | Endpoint | Access Policy | Description |
-
-| :--- | :--- | :--- | :--- |
-
-| \*\*Auth\*\* | `POST /api/Auth/login` | Public (`AuthLimiter`) | Authenticate user and issue JWT + Refresh Token |
-
-| \*\*Auth\*\* | `POST /api/Auth/refresh` | Public (`AuthLimiter`) | Rotate refresh token and issue a new access token |
-
-| \*\*Auth\*\* | `POST /api/Auth/logout` | `ActiveUser` | Revoke active refresh token and log event |
-
-| \*\*Users\*\* | `POST /api/Users/register` | Public (`AuthLimiter`) | Register a new customer account |
-
-| \*\*Users\*\* | `GET /api/Users/All` | `BankStaff` | Retrieve paginated list of users |
-
-| \*\*Users\*\* | `PUT /api/Users/profile/{id}` | Owner (`ActiveUser`) | Update user profile details |
-
-| \*\*Users\*\* | `PUT /api/Users/{id}/role` | `BankManager` | Update user role (`Manager`, `Employee`, `Customer`) |
-
-| \*\*Users\*\* | `PUT /api/Users/deactivate/{id}` | `BankManager` | Soft-deactivate a user account |
-
-| \*\*Users\*\* | `PUT /api/Users/{id}/activate` | `BankManager` | Reactivate a user account |
-
-| \*\*Users\*\* | `PUT /api/Users/{id}/unlock` | `BankManager` | Unlock a locked user account |
-
-| \*\*Accounts\*\* | `POST /api/Accounts` | `ActiveUser` | Open a new bank account |
-
-| \*\*Accounts\*\* | `GET /api/Accounts/All` | `BankStaff` | Retrieve paginated list of all bank accounts |
-
-| \*\*Accounts\*\* | `GET /api/Accounts/customer/{id}` | Owner / `BankStaff` | Retrieve paginated accounts for a specific customer |
-
-| \*\*Accounts\*\* | `PUT /api/Accounts/close/{id}` | `BankManager` | Close (deactivate) a bank account |
-
-| \*\*Transactions\*\* | `POST /api/Transactions/deposit` | `BankStaff` | Deposit funds into an account |
-
-| \*\*Transactions\*\* | `POST /api/Transactions/withdraw` | Owner / `BankStaff` | Withdraw funds within daily withdrawal limits |
-
-| \*\*Transactions\*\* | `POST /api/Transactions/transfer` | Owner / `BankStaff` | Transfer funds atomically (supports cross-currency conversion) |
-
-| \*\*Transactions\*\* | `GET /api/Transactions/All` | `BankStaff` | Retrieve paginated global transaction history |
-
-| \*\*Transactions\*\* | `GET /api/Transactions/account-history/{id}` | Owner / `BankStaff` | Retrieve paginated transaction history for an account |
-
-| \*\*Currencies\*\* | `GET /api/Currencies/All` | `ActiveUser` | Retrieve all supported currencies and exchange rates |
-
-| \*\*Currencies\*\* | `GET /api/Currencies/code/{code}` | `ActiveUser` | Find currency details by ISO currency code |
-
-| \*\*Currencies\*\* | `GET /api/Currencies/country/{country}` | `ActiveUser` | Find currency details by country name |
-
-| \*\*Currencies\*\* | `GET /api/Currencies/name/{name}` | `ActiveUser` | Find currency details by currency name |
-
-| \*\*Currencies\*\* | `GET /api/Currencies/calculate` | `ActiveUser` | Calculate currency exchange conversion via USD bridge |
-
-| \*\*Currencies\*\* | `PUT /api/Currencies/{code}/rate` | `BankManager` | Update currency exchange rate with audit trail logging |
-
-| \*\*AuditLogs\*\* | `GET /api/AuditLogs/All` | `BankManager` | Retrieve paginated system-wide audit logs |
-
-| \*\*AuditLogs\*\* | `GET /api/AuditLogs/user/{userId}` | `BankManager` | Retrieve paginated audit logs for a specific user |
-
-
-
+```sql
+UPDATE Users SET Role = 'Manager' WHERE Email = 'your@email.com';
+```
+
+After that, log in again to get a token that contains the new role.
+
+### Trying it out in Swagger
+
+1. Register through `POST /api/Users/register`, then log in through `POST /api/Auth/login`.
+2. Copy the `accessToken`, click **Authorize**, and paste the token.
+3. Use `POST /api/Auth/refresh` with the `refreshToken` when the access token expires.
+
+---
+
+## API Endpoints
+
+**Access levels:** *Public* = no token. *ActiveUser* = any logged-in active user. *Owner/Staff* = the owning customer, or a Manager/Employee. *BankStaff* = Manager or Employee. *BankManager* = Manager only.
+
+### Auth (rate limited by `AuthLimiter`)
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| POST | `/api/Auth/login` | Public | Authenticate and receive an access token and a refresh token |
+| POST | `/api/Auth/refresh` | Public | Rotate the refresh token and receive a new token pair |
+| POST | `/api/Auth/logout` | Public (requires a valid refresh token in the body) | Revoke the supplied refresh token |
+
+### Users
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| POST | `/api/Users/register` | Public (`AuthLimiter`) | Register a new customer |
+| GET | `/api/Users/All` | BankStaff | Paginated list of users |
+| GET | `/api/Users/{id}` | Owner/Staff | Get a user by ID |
+| GET | `/api/Users/{email}` | BankStaff | Get a user by email |
+| PUT | `/api/Users/profile/{id}` | Owner only | Update own name, email, or password |
+| PUT | `/api/Users/{id}/role` | BankManager | Change a user's role |
+| PUT | `/api/Users/deactivate/{id}` | BankManager | Deactivate a user |
+| PUT | `/api/Users/{id}/activate` | BankManager | Reactivate a user |
+| PUT | `/api/Users/{id}/unlock` | BankManager | Clear a lockout |
+
+### Accounts
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| POST | `/api/Accounts/create` | BankStaff | Open an account for a customer |
+| GET | `/api/Accounts/All` | BankStaff | Paginated list of all accounts |
+| GET | `/api/Accounts/{id}` | Owner/Staff | Get an account by ID |
+| GET | `/api/Accounts/{accountNumber}` | Owner/Staff | Get an account by account number |
+| GET | `/api/Accounts/customer/{customerId}` | Owner/Staff | Paginated accounts of one customer |
+| PUT | `/api/Accounts/{id}` | BankStaff | Update account type and daily withdrawal limit |
+| PUT | `/api/Accounts/{id}/activate` | BankManager | Reactivate an account |
+| PUT | `/api/Accounts/close/{id}` | BankManager | Close (deactivate) an account |
+
+### Transactions
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| POST | `/api/Transactions/deposit` | BankStaff | Deposit into an account |
+| POST | `/api/Transactions/withdraw` | BankStaff | Withdraw from an account |
+| POST | `/api/Transactions/transfer` | Owner of source account / Staff | Transfer between accounts (converts currency if needed) |
+| GET | `/api/Transactions/All` | BankStaff | Paginated list of all transactions |
+| GET | `/api/Transactions/account-history/{accountId}` | Owner/Staff | Paginated history for an account |
+| GET | `/api/Transactions/{id}` | Owner/Staff | Get a transaction by ID |
+
+### Currencies (all require ActiveUser)
+
+| Method | Endpoint | Access | Description |
+|---|---|---|---|
+| GET | `/api/Currencies/All` | ActiveUser | List currencies and rates |
+| GET | `/api/Currencies/{id}` | ActiveUser | Get a currency by ID |
+| GET | `/api/Currencies/code/{code}` | ActiveUser | Find by ISO code |
+| GET | `/api/Currencies/country/{country}` | ActiveUser | Find by country |
+| GET | `/api/Currencies/CurrencyName/{name}` | ActiveUser | Find by currency name |
+| GET | `/api/Currencies/calculate?fromCurrency=&toCurrency=&amount=` | ActiveUser | Convert an amount through the USD base |
+| PUT | `/api/Currencies/{code}/rate` | BankManager | Update a rate (audited) |
+
+### Audit logs (all require BankManager)
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/api/AuditLogs/All` | Paginated audit log |
+| GET | `/api/AuditLogs/{id}` | Get one entry |
+| GET | `/api/AuditLogs/user/{userId}` | Paginated entries for one user |
+
+### Rate limits
+
+| Policy | Applies to | Limit |
+|---|---|---|
+| Global | Whole server (one shared bucket) | 500 requests per minute |
+| `AuthLimiter` | Auth endpoints and registration, per IP | 5 requests per minute |
+| `GeneralApiLimiter` | All other controllers, per user (or per IP if anonymous) | 60 requests per minute |
+
+---
+
+## Roadmap
+
+- Automated tests (unit and integration)
+- Strengthen transaction handling and validation
+- Separate request and response models
+- Consistent error responses
+- A frontend built with HTML, CSS, JavaScript, TypeScript, Tailwind, and React
+
+---
+
+## License
+
+No license has been specified yet.
